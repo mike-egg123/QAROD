@@ -21,6 +21,7 @@ from sklearn.decomposition import PCA, KernelPCA
 from pandas import ExcelWriter
 from openpyxl.utils import get_column_letter
 from openpyxl import load_workbook
+import timeit
 
 # 读取文件
 def read_data(filename):
@@ -431,7 +432,7 @@ def multi_sst_mds(params, df):
     param_mds = mds.fit_transform(lst)
     # k, sse = elbow_best_k_2d(param_mds)
     labels = KMeans(n_clusters=len(v_params) // 5).fit_predict(lst).tolist()
-    # labels = KMeans(n_clusters=k).fit_predict(param_mds).tolist()
+    # labels = KMeans(n_clusters=len(v_params) // 5).fit_predict(param_mds).tolist()
     # print(k)
     # print(len(v_params) // 4)
     # print(labels)
@@ -537,8 +538,12 @@ if __name__ == '__main__':
 
     params = extract_params(df)
     v_params = valid_params(params, df)
+
+    start = timeit.default_timer()
     sst_mds_labels = multi_sst_mds(v_params, df)
     # df_corr, df_p = get_corrcoef(v_params, df)
+    end = timeit.default_timer()
+    print("参数间分析阶段运行时间为：" + str(end - start))
     result = pd.DataFrame()
     param_points = 0
     flying_points = 0
@@ -565,15 +570,9 @@ if __name__ == '__main__':
             result[param_name] = [completeness, "can't detect", None]
             param_points += completeness
             continue
+        
         # 使用sst+mds+聚类的方法找出相关点
         most_related_params = get_most_related_sst(v_params, param_name, sst_mds_labels)
-        # param_name_idx = v_params.index(param_name)
-        #     # target_label = sst_mds_labels[param_name_idx]
-        #     # for i in range(len(v_params)):
-        #     #     if sst_mds_labels[i] == target_label:
-        #     #         if v_params[i] == param_name:
-        #     #             continue
-        #     #         most_related_params.append(v_params[i])
 
         # 使用相关分析的方法找出相关点
         # most_related_params = get_most_related_params(df_corr, df_p, param_name)
@@ -633,7 +632,9 @@ if __name__ == '__main__':
         #                 tmp[i] = tmp[j]
         #                 break
         # values = tmp
+        
         # means = static_window_mean(values, 30)  #静态窗口
+        
         means = dynamic_window_mean(values, flight_phases, flight_phase_num, freq)  #动态窗口
         # ax2 = plt.subplot(5, 1, 2)
         # plt.sca(ax2)
@@ -642,6 +643,7 @@ if __name__ == '__main__':
         # k, sse = elbow_best_k(means)
         # labels = DBSCAN(eps=0.118, min_samples=10).fit_predict(np.array(anomaly_score).reshape(-1, 1)).tolist()
         labels1 = KMeans(n_clusters=2).fit_predict(np.array(means).reshape(-1, 1)).tolist()
+        
         # plt.scatter(x, means, s=5, c=labels1)
         # ax3 = plt.subplot(5, 1, 3)
         # plt.sca(ax3)
@@ -662,6 +664,7 @@ if __name__ == '__main__':
         # labels = DBSCAN(eps=0.118, min_samples=10).fit_predict(np.array(anomaly_score).reshape(-1, 1)).tolist()
         k, sse = elbow_best_k(slopes)
         labels2 = KMeans(n_clusters=k).fit_predict(np.array(slopes).reshape(-1, 1)).tolist()
+        
         # plt.scatter(x, slopes, s=5, c=labels2)
         # ax5 = plt.subplot(5, 1, 5)
         # plt.sca(ax5)
@@ -687,8 +690,11 @@ if __name__ == '__main__':
 
         # decide the number of parallel process, and the combination method
         # then clf can be used as any outlier detection model
+        start = timeit.default_timer()
         clf = LOF(30)
         clf.fit(np.array(values).reshape(-1, 1))
+        end = timeit.default_timer()
+        print("单参数异常检测运行时间为：" + str(end - start))
         labels4 = clf.labels_
 
         # 异常罕见原则，正常点占大多数
@@ -733,13 +739,20 @@ if __name__ == '__main__':
         for i in range(0, len(values)):
             # if i in anomaly_points1 and i in anomaly_points2:
             #     anomaly_points.append(i)
+            # if i in anomaly_points1:
+            #     anomaly_points.append(i)
             if labels4[i] == 1:
                 anomaly_points.append(i)
         # plt.plot(x, [means_avg] * len(means))
+        start = timeit.default_timer()
+        # 不进行多参数分析
+        # type1, type2 = [], anomaly_points
         # 多元线性回归得到两种不同的异常
         type1, type2 = multi_regression(df, param_name, most_related_params, anomaly_points)
         # 时间分析，染色法，修正多元回归得到的结果
         type1, type2 = time_analyse_cause(type1, type2, values)
+        end = timeit.default_timer()
+        print("多参数异常检测运行时间为：" + str(end - start))
         correctness = 1 - len(type1) / len(values)
         flying_points += 1 - len(type2) / (len(values) - len(type1))
         print("参数：" + param_name + "的准确率为：" + str(correctness))
